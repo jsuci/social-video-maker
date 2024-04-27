@@ -8,20 +8,39 @@ from googleapiclient.http import MediaIoBaseUpload
 from io import BytesIO
 from gspread_formatting import *
 
+
 # Load environment variables
 load_dotenv()
 SHEET_ID = os.getenv('SHEET_ID')
 FOLDER_MAINPHOTO_ID = os.getenv('FOLDER_MAINPHOTO_ID')
 
+
+
+def find_file_in_drive(service, folder_id, file_name):
+    """ Check if file exists in Google Drive and return its webViewLink if it does. """
+    query = f"name = '{file_name}' and '{folder_id}' in parents and trashed = false"
+    response = service.files().list(q=query, spaces='drive', fields='files(id, webViewLink)').execute()
+    files = response.get('files', [])
+    return files[0] if files else None
+
+
 def upload_image_to_drive(service, folder_id, file_name, file_data):
-    print(f"Uploading image for MLS {file_name} to Google Drive...")
-    file_metadata = {
-        'name': file_name,
-        'parents': [folder_id]
-    }
-    media = MediaIoBaseUpload(BytesIO(file_data), mimetype='image/jpeg')
-    file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
-    return file.get('webViewLink')
+    print(f"Checking if image for MLS {file_name} already exists in Google Drive...")
+    existing_file = find_file_in_drive(service, folder_id, file_name)
+
+    if existing_file:
+        print(f"Image for MLS {file_name} already exists. Link: {existing_file['webViewLink']}")
+        return existing_file['webViewLink']
+    else:
+        print(f"Uploading new image for MLS {file_name} to Google Drive...")
+        file_metadata = {
+            'name': file_name,
+            'parents': [folder_id]
+        }
+        media = MediaIoBaseUpload(BytesIO(file_data), mimetype='image/jpeg')
+        file = service.files().create(body=file_metadata, media_body=media, fields='id, webViewLink').execute()
+        return file.get('webViewLink')
+
 
 def execute_sql_query_and_upload_to_sheets(full_query):
     print("Starting the database and Google Sheets update process...")
